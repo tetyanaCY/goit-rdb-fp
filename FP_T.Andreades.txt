@@ -1,0 +1,195 @@
+CREATE SCHEMA pandemic;
+-- Створіть схему pandemic у базі даних за допомогою SQL-команди.
+
+-- Оберіть її як схему за замовчуванням за допомогою SQL-команди.
+Use pandemic;
+
+Use pandemic;
+
+select * from pandemic.infectious_cases
+limit 50
+-- Продивіться дані, щоб бути у контексті.
+
+
+-- 2. Нормалізуйте таблицю infectious_cases до 3ї нормальної форми. Збережіть у цій же схемі дві таблиці з нормалізованими даними.
+Use pandemic;
+select max(Length(Entity)), max(length(Code)) from pandemic.infectious_cases;
+
+create table if not exists country
+(
+id int auto_increment primary key,
+entity varchar(34) not null,
+code varchar(8) not null
+);
+
+insert into country (entity, code)
+select distinct entity, code from infectious_cases;
+
+select count(*), count(distinct entity, code) from country;
+
+select count(distinct entity, code) from infectious_cases;
+
+--
+
+create table infectious_cases_norm like infectious_cases;
+
+alter table infectious_cases_norm
+add column country_id int first;
+
+alter table infectious_cases_norm
+drop column Entity,
+drop column Code;
+
+alter table infectious_cases_norm
+add constraint infectious_cases_norm_country_fk
+foreign key (country_id) references country(id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+select * from infectious_cases_norm;
+
+show create table infectious_cases;
+
+alter table infectious_cases_norm
+add column inf_id int auto_increment primary key first;
+
+
+insert into infectious_cases_norm
+(
+  `country_id`,
+  `Year`,
+  `Number_yaws`,
+  `polio_cases`,
+  `cases_guinea_worm`,
+  `Number_rabies`,
+  `Number_malaria`,
+  `Number_hiv` ,
+  `Number_tuberculosis`,
+  `Number_smallpox` ,
+  `Number_cholera_cases` 
+)
+(
+select
+  `id`,
+  `Year`,
+  `Number_yaws`,
+  `polio_cases`,
+  `cases_guinea_worm`,
+  `Number_rabies`,
+  `Number_malaria`,
+  `Number_hiv` ,
+  `Number_tuberculosis`,
+  `Number_smallpox` ,
+  `Number_cholera_cases` 
+from infectious_cases
+inner join country on infectious_cases.Entity= country.entity and infectious_cases.Code= country.Code
+);
+
+
+
+
+select * from infectious_cases_norm;
+
+-- 3. Проаналізуйте дані:
+-- Для кожної унікальної комбінації Entity та Code або їх id порахуйте середнє, мінімальне, максимальне значення та суму для атрибута Number_rabies.
+-- 💡 Врахуйте, що атрибут Number_rabies може містити порожні значення ‘’ — вам попередньо необхідно їх відфільтрувати.
+-- Результат відсортуйте за порахованим середнім значенням у порядку спадання.
+-- Оберіть тільки 10 рядків для виведення на екран.
+
+USE pandemic;
+
+SELECT country_id,
+       AVG(Number_rabies) AS average,
+       MIN(Number_rabies) AS minimal,
+       MAX(Number_rabies) AS maximal,
+       SUM(Number_rabies) AS sum
+FROM infectious_cases_norm
+WHERE Number_rabies IS NOT NULL
+  AND Number_rabies <> ''
+GROUP BY country_id
+ORDER BY average DESC
+LIMIT 10;
+
+
+
+-- 4. Побудуйте колонку різниці в роках.
+--  Для оригінальної або нормованої таблиці для колонки Year побудуйте з використанням вбудованих SQL-функцій:
+-- атрибут, що створює дату першого січня відповідного року,
+-- Наприклад, якщо атрибут містить значення ’1996’, то значення нового атрибута має бути ‘1996-01-01’.
+-- атрибут, що дорівнює поточній даті,
+-- атрибут, що дорівнює різниці в роках двох вищезгаданих колонок.
+-- Перераховувати всі інші атрибути, такі як Number_malaria, не потрібно.
+
+Use pandemic;
+select 
+     Year, 
+     makedate(Year,1) first_day,
+     curdate(),
+     timestampdiff(Year, makedate(Year,1), curdate()) as diff_years
+from infectious_cases_norm;
+
+alter table infectious_cases_norm
+add column first_day date,
+add column cur_day date,
+add column diff_years int;
+
+select year, first_day, diff_years from infectious_cases_norm;
+
+update infectious_cases_norm set first_day=makedate(Year,1);
+
+
+select @@sql_safe_updates;
+select @@sql_safe_updates=0;
+
+
+update infectious_cases_norm set first_day=makedate(Year,1);
+select year, first_day, cur_day, diff_years from infectious_cases_norm;
+update infectious_cases_norm set cur_day=curdate();
+update infectious_cases_norm set diff_years=timestampdiff(Year, makedate(Year,1), curdate());
+
+
+USE pandemic;
+
+-- Крок 1: Видалити функцію, якщо вона вже існує
+DROP FUNCTION IF EXISTS diff_years;
+
+-- Крок 2: Створити функцію для обчислення різниці в роках
+DELIMITER //
+
+CREATE FUNCTION diff_years(num INT)
+RETURNS INT
+DETERMINISTIC
+NO SQL
+BEGIN
+   -- Обчислюємо різницю в роках між датою 1 січня року (num) і поточною датою
+   RETURN TIMESTAMPDIFF(YEAR, MAKEDATE(num, 1), CURDATE());
+END //
+
+DELIMITER ;
+
+-- Крок 3: Перевіряємо функцію, вибираючи рік і обчислену різницю в роках
+SELECT Year, diff_years(Year) AS diff_years
+FROM infectious_cases_norm;
+
+-- Крок 4: Додаємо нову колонку для збереження обчислених значень різниці в роках
+ALTER TABLE infectious_cases_norm
+ADD COLUMN diff_years2 INT;
+
+-- Крок 5: Оновлюємо нову колонку, використовуючи створену функцію
+UPDATE infectious_cases_norm
+SET diff_years2 = diff_years(Year);
+
+-- Крок 6: Отримуємо результати для перевірки
+SELECT Year, diff_years2
+FROM infectious_cases_norm;
